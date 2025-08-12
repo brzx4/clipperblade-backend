@@ -1,30 +1,37 @@
 import express from 'express';
 import pg from 'pg';
 import cors from 'cors';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const pool = new pg.Pool({
-  user: 'clipperblade_user',
-  host: 'dpg-d2djv7ogjchc73drcep0-a',
-  database: 'clipperblade',
-  password: 'zUt0FfXuDCSfOkPcgPYkwDc8dmYEJlU8',
-  port: 5432,
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: Number(process.env.DB_PORT),
   ssl: { rejectUnauthorized: false }
 });
 
 (async () => {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS usuarios (
-      id SERIAL PRIMARY KEY,
-      usuario TEXT UNIQUE NOT NULL,
-      telefone TEXT NOT NULL,
-      senha TEXT NOT NULL
-    );
-  `);
-  console.log("Tabela 'usuarios' criada/verificada.");
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS usuarios (
+        id SERIAL PRIMARY KEY,
+        usuario TEXT UNIQUE NOT NULL,
+        telefone TEXT NOT NULL,
+        senha TEXT NOT NULL
+      );
+    `);
+    console.log("Tabela 'usuarios' criada/verificada.");
+  } catch (err) {
+    console.error('Erro ao criar/verificar tabela:', err);
+  }
 })();
 
 app.post('/cadastro', async (req, res) => {
