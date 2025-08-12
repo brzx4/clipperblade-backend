@@ -1,241 +1,217 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, Modal, TouchableOpacity } from 'react-native';
-import { useAgendamentos } from '../context/AgendamentoContext';
+import express from 'express';
+import pg from 'pg';
+import cors from 'cors';
+import dotenv from 'dotenv';
 
-export default function EstatisticasScreen() {
-  const { agendamentos } = useAgendamentos();
-  const [modalVisible, setModalVisible] = useState(false);
-  const [diaSelecionado, setDiaSelecionado] = useState('');
-  const [atendimentosSelecionados, setAtendimentosSelecionados] = useState(0);
+dotenv.config();
 
-  const hoje = new Date();
-  const diaHojeStr = hoje.toISOString().slice(0, 10); // "yyyy-mm-dd"
-  const mesAtual = hoje.getMonth();
-  const anoAtual = hoje.getFullYear();
+const app = express();
+app.use(cors());
+app.use(express.json());
 
-  const contar = (lista, campo) => {
-    const map = {};
-    lista.forEach(item => {
-      const chave = item[campo];
-      map[chave] = (map[chave] || 0) + 1;
-    });
-    return map;
-  };
-
-  const encontrarMaior = (obj) => {
-    let maiorValor = 0;
-    let chaveMaior = '-';
-    for (const chave in obj) {
-      if (obj[chave] > maiorValor) {
-        maiorValor = obj[chave];
-        chaveMaior = chave;
-      }
-    }
-    return chaveMaior;
-  };
-
-  const parseData = (dataStr) => {
-    const [a, m, d] = dataStr.split('-');
-    return new Date(parseInt(a), parseInt(m) - 1, parseInt(d));
-  };
-
-  const getWeekNumber = (date) => {
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    const dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-  };
-  const semanaAtual = getWeekNumber(hoje);
-
-  const agendamentosDia = agendamentos.filter(a => a.data.split('T')[0] === diaHojeStr);
-  const agendamentosMes = agendamentos.filter(a => {
-    const d = parseData(a.data.split('T')[0]);
-    return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
-  });
-  const agendamentosSemana = agendamentos.filter(a => {
-    const d = parseData(a.data.split('T')[0]);
-    return getWeekNumber(d) === semanaAtual && d.getFullYear() === anoAtual;
-  });
-
-  const agendamentosConcluidosDia = agendamentosDia.filter(a => a.status === 'concluido');
-  const agendamentosConcluidosSemana = agendamentosSemana.filter(a => a.status === 'concluido');
-  const agendamentosConcluidosMes = agendamentosMes.filter(a => a.status === 'concluido');
-
-  // Soma receita real dos agendamentos concluídos
-  const receitaDia = agendamentosConcluidosDia.reduce((total, ag) => total + Number(ag.valor || 0), 0);
-  const receitaSemana = agendamentosConcluidosSemana.reduce((total, ag) => total + Number(ag.valor || 0), 0);
-  const receitaMes = agendamentosConcluidosMes.reduce((total, ag) => total + Number(ag.valor || 0), 0);
-
-  const servicosDia = contar(agendamentosDia, 'servico');
-  const servicosSemana = contar(agendamentosSemana, 'servico');
-  const servicosMes = contar(agendamentosMes, 'servico');
-
-  const clientesSemana = contar(agendamentosSemana, 'cliente_nome');
-  const clientesMes = contar(agendamentosMes, 'cliente_nome');
-
-  const agendamentosCountDia = agendamentosDia.length;
-  const agendamentosCountSemana = agendamentosSemana.length;
-  const agendamentosCountMes = agendamentosMes.length;
-
-  const servicoMaisFeitoDia = encontrarMaior(servicosDia);
-  const servicoMaisFeitoSemana = encontrarMaior(servicosSemana);
-  const servicoMaisFeitoMes = encontrarMaior(servicosMes);
-
-  const clienteMaisSaiuSemana = encontrarMaior(clientesSemana);
-  const clienteMaisSaiuMes = encontrarMaior(clientesMes);
-
-  const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-  const contagemPorDiaSemana = [0, 0, 0, 0, 0, 0, 0];
-  agendamentos.forEach(({ data }) => {
-    const d = parseData(data.split('T')[0]);
-    contagemPorDiaSemana[d.getDay()]++;
-  });
-
-  const handleDiaSemanaPress = (index) => {
-    setDiaSelecionado(diasSemana[index]);
-    setAtendimentosSelecionados(contagemPorDiaSemana[index]);
-    setModalVisible(true);
-  };
-
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40, alignItems: 'center' }}>
-      <Image source={require('../assets/logo.png')} style={styles.logo} resizeMode="contain" />
-      <Text style={styles.barbeariaNome}>Barber Shop</Text>
-
-      <Text style={styles.titulo}>📊 Estatísticas</Text>
-
-      <Text style={styles.sectionTitle}>📅 Dados do Dia Atual ({diaHojeStr})</Text>
-      <Text style={styles.item}>Agendamentos: <Text style={styles.valor}>{agendamentosCountDia}</Text></Text>
-      <Text style={styles.item}>Receita total: <Text style={styles.valor}>R$ {receitaDia.toFixed(2)}</Text></Text>
-      <Text style={styles.item}>Serviço mais feito: <Text style={styles.valor}>{servicoMaisFeitoDia}</Text></Text>
-
-      <Text style={styles.sectionTitle}>📅 Dados da Semana Atual (Semana {semanaAtual})</Text>
-      <Text style={styles.item}>Agendamentos: <Text style={styles.valor}>{agendamentosCountSemana}</Text></Text>
-      <Text style={styles.item}>Receita total: <Text style={styles.valor}>R$ {receitaSemana.toFixed(2)}</Text></Text>
-      <Text style={styles.item}>Serviço mais feito: <Text style={styles.valor}>{servicoMaisFeitoSemana}</Text></Text>
-      <Text style={styles.item}>Cliente que mais saiu: <Text style={styles.valor}>{clienteMaisSaiuSemana}</Text></Text>
-
-      <Text style={styles.sectionTitle}>📅 Dados do Mês Atual ({(mesAtual + 1).toString().padStart(2, '0')}/{anoAtual})</Text>
-      <Text style={styles.item}>Agendamentos: <Text style={styles.valor}>{agendamentosCountMes}</Text></Text>
-      <Text style={styles.item}>Receita total: <Text style={styles.valor}>R$ {receitaMes.toFixed(2)}</Text></Text>
-      <Text style={styles.item}>Serviço mais feito: <Text style={styles.valor}>{servicoMaisFeitoMes}</Text></Text>
-      <Text style={styles.item}>Cliente que mais saiu: <Text style={styles.valor}>{clienteMaisSaiuMes}</Text></Text>
-
-      <Text style={styles.sectionTitle}>📅 Atendimentos por Dia da Semana</Text>
-      {diasSemana.map((dia, i) => (
-        <TouchableOpacity key={dia} onPress={() => handleDiaSemanaPress(i)} style={styles.listItemTouchable}>
-          <Text style={styles.listItem}>
-            {dia}: <Text style={styles.valor}>{contagemPorDiaSemana[i]}</Text>
-          </Text>
-        </TouchableOpacity>
-      ))}
-
-      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{diaSelecionado}</Text>
-            <Text style={styles.modalText}>{atendimentosSelecionados} atendimento(s)</Text>
-            <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.modalCloseButton}>
-              <Text style={styles.modalCloseText}>Fechar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    </ScrollView>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#121212',
-    flex: 1,
-    padding: 20,
-  },
-  logo: {
-    width: 100,
-    height: 100,
-    marginBottom: 12,
-    alignSelf: 'center',
-  },
-  barbeariaNome: {
-    fontSize: 28,
-    color: '#dab664',
-    fontWeight: 'bold',
-    marginBottom: 16,
-    fontFamily: 'serif',
-    letterSpacing: 2,
-    alignSelf: 'center',
-  },
-  titulo: {
-    color: '#dab664',
-    fontSize: 26,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    alignSelf: 'center',
-  },
-  sectionTitle: {
-    color: '#4caf50',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginTop: 20,
-    marginBottom: 10,
-    alignSelf: 'flex-start',
-  },
-  item: {
-    color: '#ccc',
-    fontSize: 16,
-    marginBottom: 8,
-    alignSelf: 'flex-start',
-  },
-  valor: {
-    color: '#dab664',
-    fontWeight: 'bold',
-  },
-  listItem: {
-    color: '#aaa',
-    marginLeft: 10,
-    fontSize: 14,
-    marginBottom: 4,
-    alignSelf: 'flex-start',
-  },
-  listItemTouchable: {
-    width: '100%',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: '#222',
-    borderRadius: 12,
-    padding: 25,
-    width: '80%',
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#dab664',
-    marginBottom: 10,
-  },
-  modalText: {
-    color: '#fff',
-    fontSize: 18,
-    marginBottom: 20,
-  },
-  modalCloseButton: {
-    backgroundColor: '#dab664',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  modalCloseText: {
-    fontWeight: 'bold',
-    color: '#121212',
-    fontSize: 16,
-  },
+const pool = new pg.Pool({
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: Number(process.env.DB_PORT),
+  ssl: { rejectUnauthorized: false }
 });
+
+// ====== Criação das tabelas ======
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS usuarios (
+        id SERIAL PRIMARY KEY,
+        usuario TEXT UNIQUE NOT NULL,
+        telefone TEXT NOT NULL,
+        senha TEXT NOT NULL
+      );
+    `);
+    console.log("Tabela 'usuarios' criada/verificada.");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS agendamentos (
+        id SERIAL PRIMARY KEY,
+        cliente_nome TEXT NOT NULL,
+        telefone TEXT NOT NULL,
+        data DATE NOT NULL,
+        hora TIME NOT NULL,
+        servico TEXT NOT NULL,
+        status TEXT DEFAULT 'pendente'
+      );
+    `);
+    console.log("Tabela 'agendamentos' criada/verificada.");
+  } catch (err) {
+    console.error('Erro ao criar/verificar tabelas:', err);
+  }
+})();
+
+// ====== Rotas de Cadastro ======
+app.post('/cadastro', async (req, res) => {
+  const { usuario, telefone, senha } = req.body;
+  if (!usuario || !telefone || !senha) {
+    return res.status(400).json({ error: 'Preencha todos os campos!' });
+  }
+  try {
+    const exists = await pool.query('SELECT id FROM usuarios WHERE usuario = $1', [usuario]);
+    if (exists.rows.length > 0) {
+      return res.status(400).json({ error: 'Este nome de usuário já está em uso.' });
+    }
+    await pool.query(
+      'INSERT INTO usuarios (usuario, telefone, senha) VALUES ($1, $2, $3)',
+      [usuario, telefone, senha]
+    );
+    res.json({ message: 'Cadastro realizado com sucesso!' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao salvar os dados.' });
+  }
+});
+
+// ====== Rota de Login ======
+app.post('/login', async (req, res) => {
+  const { login, senha } = req.body;
+  if (!login || !senha) {
+    return res.status(400).json({ error: 'Preencha todos os campos!' });
+  }
+  try {
+    const result = await pool.query(
+      'SELECT * FROM usuarios WHERE (usuario = $1 OR telefone = $1) AND senha = $2',
+      [login, senha]
+    );
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
+    }
+    res.json({ message: 'Login realizado com sucesso!' });
+  } catch (error) {
+    console.error('Erro no login:', error);
+    res.status(500).json({ error: 'Erro no servidor durante o login.' });
+  }
+});
+
+// ====== Rotas de Agendamentos ======
+
+// Listar todos os agendamentos
+app.get('/agendamentos', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM agendamentos ORDER BY data, hora');
+    res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao carregar agendamentos.' });
+  }
+});
+
+// Criar um agendamento (com validação de horário)
+app.post('/agendamentos', async (req, res) => {
+  const { cliente_nome, telefone, data, hora, servico, status } = req.body;
+
+  if (!cliente_nome || !telefone || !data || !hora || !servico) {
+    return res.status(400).json({ error: 'Preencha todos os campos obrigatórios!' });
+  }
+
+  try {
+    // Verificar se já existe agendamento para data+hora
+    const conflito = await pool.query(
+      'SELECT id FROM agendamentos WHERE data = $1 AND hora = $2',
+      [data, hora]
+    );
+    if (conflito.rows.length > 0) {
+      return res.status(400).json({ error: 'Horário já ocupado.' });
+    }
+
+    await pool.query(
+      'INSERT INTO agendamentos (cliente_nome, telefone, data, hora, servico, status) VALUES ($1, $2, $3, $4, $5, $6)',
+      [cliente_nome, telefone, data, hora, servico, status || 'pendente']
+    );
+    res.status(201).json({ message: 'Agendamento criado com sucesso!' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao criar agendamento.' });
+  }
+});
+
+// Atualizar um agendamento (com validação de horário, exceto o próprio)
+app.put('/agendamentos/:id', async (req, res) => {
+  const { id } = req.params;
+  const { cliente_nome, telefone, data, hora, servico, status } = req.body;
+
+  if (!cliente_nome || !telefone || !data || !hora || !servico || !status) {
+    return res.status(400).json({ error: 'Preencha todos os campos obrigatórios!' });
+  }
+
+  try {
+    // Verificar se já existe outro agendamento com mesma data e hora, diferente deste id
+    const conflito = await pool.query(
+      'SELECT id FROM agendamentos WHERE data = $1 AND hora = $2 AND id <> $3',
+      [data, hora, id]
+    );
+
+    if (conflito.rows.length > 0) {
+      return res.status(400).json({ error: 'Horário já ocupado por outro agendamento.' });
+    }
+
+    const result = await pool.query(
+      'UPDATE agendamentos SET cliente_nome=$1, telefone=$2, data=$3, hora=$4, servico=$5, status=$6 WHERE id=$7 RETURNING *',
+      [cliente_nome, telefone, data, hora, servico, status, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Agendamento não encontrado.' });
+    }
+
+    res.json({ message: 'Agendamento atualizado com sucesso!', agendamento: result.rows[0] });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao atualizar agendamento.' });
+  }
+});
+
+// Deletar um agendamento
+app.delete('/agendamentos/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query('DELETE FROM agendamentos WHERE id=$1 RETURNING *', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Agendamento não encontrado.' });
+    }
+
+    res.json({ message: 'Agendamento excluído com sucesso!' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao excluir agendamento.' });
+  }
+});
+
+// Marcar agendamento como concluído
+app.patch('/agendamentos/:id/concluir', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      "UPDATE agendamentos SET status = 'concluido' WHERE id = $1 RETURNING *",
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Agendamento não encontrado.' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao concluir agendamento:', error);
+    res.status(500).json({ error: 'Erro ao concluir agendamento.' });
+  }
+});
+
+// Rota raiz para teste simples
+app.get('/', (req, res) => {
+  res.json({ message: 'API rodando!' });
+});
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log(`Servidor rodando na porta ${port}`));
