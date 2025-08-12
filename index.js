@@ -18,7 +18,18 @@ const pool = new pg.Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// ====== Criação das tabelas ======
+const converterValor = (valor) => {
+  if (!valor) return 0;
+  if (typeof valor === 'number') return valor;
+  if (typeof valor === 'string') {
+    const valorNormalizado = valor.replace(',', '.');
+    const n = Number(valorNormalizado);
+    return isNaN(n) ? 0 : n;
+  }
+  return 0;
+};
+
+// Criação das tabelas
 (async () => {
   try {
     await pool.query(`
@@ -49,7 +60,8 @@ const pool = new pg.Pool({
   }
 })();
 
-// ====== Rotas de Cadastro ======
+// Rotas
+
 app.post('/cadastro', async (req, res) => {
   const { usuario, telefone, senha } = req.body;
   if (!usuario || !telefone || !senha) {
@@ -71,7 +83,6 @@ app.post('/cadastro', async (req, res) => {
   }
 });
 
-// ====== Rota de Login ======
 app.post('/login', async (req, res) => {
   const { login, senha } = req.body;
   if (!login || !senha) {
@@ -92,9 +103,6 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// ====== Rotas de Agendamentos ======
-
-// Listar todos os agendamentos com valor convertido para float
 app.get('/agendamentos', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -109,7 +117,6 @@ app.get('/agendamentos', async (req, res) => {
   }
 });
 
-// Criar um agendamento (com validação de horário)
 app.post('/agendamentos', async (req, res) => {
   const { cliente_nome, telefone, data, hora, servico, status, valor } = req.body;
 
@@ -126,7 +133,7 @@ app.post('/agendamentos', async (req, res) => {
       return res.status(400).json({ error: 'Horário já ocupado.' });
     }
 
-    const valorNumerico = valor ? Number(valor) : 0;
+    const valorNumerico = converterValor(valor);
 
     await pool.query(
       'INSERT INTO agendamentos (cliente_nome, telefone, data, hora, servico, status, valor) VALUES ($1, $2, $3, $4, $5, $6, $7)',
@@ -139,7 +146,6 @@ app.post('/agendamentos', async (req, res) => {
   }
 });
 
-// Atualizar um agendamento (com validação de horário, exceto o próprio)
 app.put('/agendamentos/:id', async (req, res) => {
   const { id } = req.params;
   const { cliente_nome, telefone, data, hora, servico, status, valor } = req.body;
@@ -158,7 +164,7 @@ app.put('/agendamentos/:id', async (req, res) => {
       return res.status(400).json({ error: 'Horário já ocupado por outro agendamento.' });
     }
 
-    const valorNumerico = valor ? Number(valor) : 0;
+    const valorNumerico = converterValor(valor);
 
     const result = await pool.query(
       'UPDATE agendamentos SET cliente_nome=$1, telefone=$2, data=$3, hora=$4, servico=$5, status=$6, valor=$7 WHERE id=$8 RETURNING *',
@@ -176,7 +182,6 @@ app.put('/agendamentos/:id', async (req, res) => {
   }
 });
 
-// Deletar um agendamento
 app.delete('/agendamentos/:id', async (req, res) => {
   const { id } = req.params;
 
@@ -194,7 +199,6 @@ app.delete('/agendamentos/:id', async (req, res) => {
   }
 });
 
-// Marcar agendamento como concluído, mantendo o valor original
 app.patch('/agendamentos/:id/concluir', async (req, res) => {
   const { id } = req.params;
 
@@ -215,7 +219,6 @@ app.patch('/agendamentos/:id/concluir', async (req, res) => {
   }
 });
 
-// Rota raiz para teste simples
 app.get('/', (req, res) => {
   res.json({ message: 'API rodando!' });
 });
