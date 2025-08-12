@@ -76,6 +76,31 @@ app.post('/cadastro', async (req, res) => {
   }
 });
 
+// ====== Rota de Login ======
+app.post('/login', async (req, res) => {
+  const { login, senha } = req.body; // login pode ser usuario ou telefone
+
+  if (!login || !senha) {
+    return res.status(400).json({ error: 'Preencha todos os campos!' });
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM usuarios WHERE (usuario = $1 OR telefone = $1) AND senha = $2',
+      [login, senha]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
+    }
+
+    res.json({ message: 'Login realizado com sucesso!' });
+  } catch (error) {
+    console.error('Erro no login:', error);
+    res.status(500).json({ error: 'Erro no servidor durante o login.' });
+  }
+});
+
 // ====== Rotas de Agendamentos ======
 
 // Listar todos os agendamentos
