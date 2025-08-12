@@ -21,7 +21,6 @@ const pool = new pg.Pool({
 // ====== Criação das tabelas ======
 (async () => {
   try {
-    // Tabela usuários
     await pool.query(`
       CREATE TABLE IF NOT EXISTS usuarios (
         id SERIAL PRIMARY KEY,
@@ -32,7 +31,6 @@ const pool = new pg.Pool({
     `);
     console.log("Tabela 'usuarios' criada/verificada.");
 
-    // Tabela agendamentos
     await pool.query(`
       CREATE TABLE IF NOT EXISTS agendamentos (
         id SERIAL PRIMARY KEY,
@@ -53,22 +51,18 @@ const pool = new pg.Pool({
 // ====== Rotas de Cadastro ======
 app.post('/cadastro', async (req, res) => {
   const { usuario, telefone, senha } = req.body;
-
   if (!usuario || !telefone || !senha) {
     return res.status(400).json({ error: 'Preencha todos os campos!' });
   }
-
   try {
     const exists = await pool.query('SELECT id FROM usuarios WHERE usuario = $1', [usuario]);
     if (exists.rows.length > 0) {
       return res.status(400).json({ error: 'Este nome de usuário já está em uso.' });
     }
-
     await pool.query(
       'INSERT INTO usuarios (usuario, telefone, senha) VALUES ($1, $2, $3)',
       [usuario, telefone, senha]
     );
-
     res.json({ message: 'Cadastro realizado com sucesso!' });
   } catch (error) {
     console.error(error);
@@ -78,22 +72,18 @@ app.post('/cadastro', async (req, res) => {
 
 // ====== Rota de Login ======
 app.post('/login', async (req, res) => {
-  const { login, senha } = req.body; // login pode ser usuario ou telefone
-
+  const { login, senha } = req.body;
   if (!login || !senha) {
     return res.status(400).json({ error: 'Preencha todos os campos!' });
   }
-
   try {
     const result = await pool.query(
       'SELECT * FROM usuarios WHERE (usuario = $1 OR telefone = $1) AND senha = $2',
       [login, senha]
     );
-
     if (result.rows.length === 0) {
       return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
     }
-
     res.json({ message: 'Login realizado com sucesso!' });
   } catch (error) {
     console.error('Erro no login:', error);
@@ -114,7 +104,7 @@ app.get('/agendamentos', async (req, res) => {
   }
 });
 
-// Criar um agendamento
+// Criar um agendamento (com validação de horário)
 app.post('/agendamentos', async (req, res) => {
   const { cliente_nome, telefone, data, hora, servico, status } = req.body;
 
@@ -123,6 +113,15 @@ app.post('/agendamentos', async (req, res) => {
   }
 
   try {
+    // Verificar se já existe agendamento para data+hora
+    const conflito = await pool.query(
+      'SELECT id FROM agendamentos WHERE data = $1 AND hora = $2',
+      [data, hora]
+    );
+    if (conflito.rows.length > 0) {
+      return res.status(400).json({ error: 'Horário já ocupado.' });
+    }
+
     await pool.query(
       'INSERT INTO agendamentos (cliente_nome, telefone, data, hora, servico, status) VALUES ($1, $2, $3, $4, $5, $6)',
       [cliente_nome, telefone, data, hora, servico, status || 'pendente']
@@ -134,7 +133,7 @@ app.post('/agendamentos', async (req, res) => {
   }
 });
 
-// Atualizar um agendamento
+// Atualizar um agendamento (com validação de horário, exceto o próprio)
 app.put('/agendamentos/:id', async (req, res) => {
   const { id } = req.params;
   const { cliente_nome, telefone, data, hora, servico, status } = req.body;
@@ -144,6 +143,16 @@ app.put('/agendamentos/:id', async (req, res) => {
   }
 
   try {
+    // Verificar se já existe outro agendamento com mesma data e hora, diferente deste id
+    const conflito = await pool.query(
+      'SELECT id FROM agendamentos WHERE data = $1 AND hora = $2 AND id <> $3',
+      [data, hora, id]
+    );
+
+    if (conflito.rows.length > 0) {
+      return res.status(400).json({ error: 'Horário já ocupado por outro agendamento.' });
+    }
+
     const result = await pool.query(
       'UPDATE agendamentos SET cliente_nome=$1, telefone=$2, data=$3, hora=$4, servico=$5, status=$6 WHERE id=$7 RETURNING *',
       [cliente_nome, telefone, data, hora, servico, status, id]
