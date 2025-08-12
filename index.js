@@ -94,10 +94,14 @@ app.post('/login', async (req, res) => {
 
 // ====== Rotas de Agendamentos ======
 
-// Listar todos os agendamentos
+// Listar todos os agendamentos com valor convertido para float
 app.get('/agendamentos', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM agendamentos ORDER BY data, hora');
+    const result = await pool.query(`
+      SELECT id, cliente_nome, telefone, data, hora, servico, status, valor::float AS valor
+      FROM agendamentos
+      ORDER BY data, hora
+    `);
     res.json(result.rows);
   } catch (error) {
     console.error(error);
@@ -114,7 +118,6 @@ app.post('/agendamentos', async (req, res) => {
   }
 
   try {
-    // Verificar se já existe agendamento para data+hora
     const conflito = await pool.query(
       'SELECT id FROM agendamentos WHERE data = $1 AND hora = $2',
       [data, hora]
@@ -123,7 +126,6 @@ app.post('/agendamentos', async (req, res) => {
       return res.status(400).json({ error: 'Horário já ocupado.' });
     }
 
-    // Valor deve ser convertido para número, garantindo que não seja null
     const valorNumerico = valor ? Number(valor) : 0;
 
     await pool.query(
@@ -147,7 +149,6 @@ app.put('/agendamentos/:id', async (req, res) => {
   }
 
   try {
-    // Verificar se já existe outro agendamento com mesma data e hora, diferente deste id
     const conflito = await pool.query(
       'SELECT id FROM agendamentos WHERE data = $1 AND hora = $2 AND id <> $3',
       [data, hora, id]
@@ -157,7 +158,6 @@ app.put('/agendamentos/:id', async (req, res) => {
       return res.status(400).json({ error: 'Horário já ocupado por outro agendamento.' });
     }
 
-    // Valor numérico
     const valorNumerico = valor ? Number(valor) : 0;
 
     const result = await pool.query(
@@ -199,7 +199,6 @@ app.patch('/agendamentos/:id/concluir', async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Atualizar somente o status, sem alterar o valor
     const result = await pool.query(
       "UPDATE agendamentos SET status = 'concluido' WHERE id = $1 RETURNING *",
       [id]
