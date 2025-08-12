@@ -18,7 +18,7 @@ const pool = new pg.Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// Criação das tabelas
+// ====== Criação das tabelas ======
 (async () => {
   try {
     await pool.query(`
@@ -49,7 +49,7 @@ const pool = new pg.Pool({
   }
 })();
 
-// Rotas de Cadastro
+// ====== Rotas de Cadastro ======
 app.post('/cadastro', async (req, res) => {
   const { usuario, telefone, senha } = req.body;
   if (!usuario || !telefone || !senha) {
@@ -71,7 +71,7 @@ app.post('/cadastro', async (req, res) => {
   }
 });
 
-// Rota de Login
+// ====== Rota de Login ======
 app.post('/login', async (req, res) => {
   const { login, senha } = req.body;
   if (!login || !senha) {
@@ -92,7 +92,7 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// Rotas de Agendamentos
+// ====== Rotas de Agendamentos ======
 
 // Listar todos os agendamentos
 app.get('/agendamentos', async (req, res) => {
@@ -123,9 +123,12 @@ app.post('/agendamentos', async (req, res) => {
       return res.status(400).json({ error: 'Horário já ocupado.' });
     }
 
+    // Valor deve ser convertido para número, garantindo que não seja null
+    const valorNumerico = valor ? Number(valor) : 0;
+
     await pool.query(
       'INSERT INTO agendamentos (cliente_nome, telefone, data, hora, servico, status, valor) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [cliente_nome, telefone, data, hora, servico, status || 'pendente', valor || 0]
+      [cliente_nome, telefone, data, hora, servico, status || 'pendente', valorNumerico]
     );
     res.status(201).json({ message: 'Agendamento criado com sucesso!' });
   } catch (error) {
@@ -154,9 +157,12 @@ app.put('/agendamentos/:id', async (req, res) => {
       return res.status(400).json({ error: 'Horário já ocupado por outro agendamento.' });
     }
 
+    // Valor numérico
+    const valorNumerico = valor ? Number(valor) : 0;
+
     const result = await pool.query(
       'UPDATE agendamentos SET cliente_nome=$1, telefone=$2, data=$3, hora=$4, servico=$5, status=$6, valor=$7 WHERE id=$8 RETURNING *',
-      [cliente_nome, telefone, data, hora, servico, status, valor || 0, id]
+      [cliente_nome, telefone, data, hora, servico, status, valorNumerico, id]
     );
 
     if (result.rows.length === 0) {
@@ -188,11 +194,12 @@ app.delete('/agendamentos/:id', async (req, res) => {
   }
 });
 
-// Marcar agendamento como concluído
+// Marcar agendamento como concluído, mantendo o valor original
 app.patch('/agendamentos/:id/concluir', async (req, res) => {
   const { id } = req.params;
 
   try {
+    // Atualizar somente o status, sem alterar o valor
     const result = await pool.query(
       "UPDATE agendamentos SET status = 'concluido' WHERE id = $1 RETURNING *",
       [id]
