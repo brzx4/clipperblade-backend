@@ -60,8 +60,7 @@ const converterValor = (valor) => {
   }
 })();
 
-// Rotas
-
+// Rotas existentes
 app.post('/cadastro', async (req, res) => {
   const { usuario, telefone, senha } = req.body;
   if (!usuario || !telefone || !senha) {
@@ -216,6 +215,86 @@ app.patch('/agendamentos/:id/concluir', async (req, res) => {
   } catch (error) {
     console.error('Erro ao concluir agendamento:', error);
     res.status(500).json({ error: 'Erro ao concluir agendamento.' });
+  }
+});
+
+// Novas rotas de estatísticas
+app.get('/estatisticas', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status='concluido') AS atendimentos,
+        COALESCE(SUM(valor) FILTER (WHERE status='concluido'),0) AS receita
+      FROM agendamentos
+    `);
+
+    const { rows: servicoRows } = await pool.query(`
+      SELECT servico, COUNT(*) AS total
+      FROM agendamentos
+      WHERE status='concluido'
+      GROUP BY servico
+      ORDER BY total DESC
+      LIMIT 1
+    `);
+
+    const { rows: clienteRows } = await pool.query(`
+      SELECT cliente_nome, COUNT(*) AS total
+      FROM agendamentos
+      WHERE status='concluido'
+      GROUP BY cliente_nome
+      ORDER BY total DESC
+      LIMIT 1
+    `);
+
+    res.json({
+      atendimentos: Number(rows[0].atendimentos),
+      receita: Number(rows[0].receita),
+      servico_mais_fez: servicoRows[0]?.servico || '-',
+      cliente_mais_frequente: clienteRows[0]?.cliente_nome || '-'
+    });
+  } catch (err) {
+    console.error('Erro ao buscar estatísticas:', err);
+    res.status(500).json({ error: 'Erro ao carregar estatísticas.' });
+  }
+});
+
+app.get('/estatisticas/:periodo', async (req, res) => {
+  const { periodo } = req.params;
+  try {
+    let whereClause = "status='concluido'";
+    const hoje = new Date();
+    
+    if (periodo === 'DIA') {
+      whereClause += ` AND data = '${hoje.toISOString().split('T')[0]}'`;
+    } else if (periodo === 'SEMANA') {
+      const primeiroDia = new Date();
+      primeiroDia.setDate(hoje.getDate() - hoje.getDay());
+      const ultimoDia = new Date(primeiroDia);
+      ultimoDia.setDate(primeiroDia.getDate() + 6);
+      whereClause += ` AND data BETWEEN '${primeiroDia.toISOString().split('T')[0]}' AND '${ultimoDia.toISOString().split('T')[0]}'`;
+    } else if (periodo === 'MES') {
+      const mes = hoje.getMonth() + 1;
+      const ano = hoje.getFullYear();
+      whereClause += ` AND EXTRACT(MONTH FROM data) = ${mes} AND EXTRACT(YEAR FROM data) = ${ano}`;
+    } else {
+      return res.status(400).json({ error: 'Período inválido' });
+    }
+
+    const { rows } = await pool.query(`
+      SELECT
+        COUNT(*) AS atendimentos,
+        COALESCE(SUM(valor),0) AS receita
+      FROM agendamentos
+      WHERE ${whereClause}
+    `);
+
+    res.json({
+      atendimentos: Number(rows[0].atendimentos),
+      receita: Number(rows[0].receita)
+    });
+  } catch (err) {
+    console.error('Erro ao buscar estatísticas por período:', err);
+    res.status(500).json({ error: 'Erro ao carregar estatísticas.' });
   }
 });
 
